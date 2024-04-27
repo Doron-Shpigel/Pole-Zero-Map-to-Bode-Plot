@@ -1,26 +1,50 @@
 #Title: Pole-Zero map to Bode plot GUI
 #made by Doron Shpigel - doron.shpigel@gmail.com
-#2024-07-20
+#2024-08-26
 #This code is a simple GUI for moving poles and zeros in a pole-zero map and seeing the effect on the bode plot
 
 
 # Importing the required libraries
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
 from matplotlib.patches import Circle, Rectangle, Wedge
 from scipy import signal
 import sympy as sp
 from sympy import init_printing
 init_printing() 
 
+def initialize_array_with_value(Xmin, Xmax, n, X0):
+    # Create an array containing n equally spaced numbers between Xmin and Xmax
+    arr = np.linspace(Xmin, Xmax, n)
+    
+    # Check if X0 is already in the array
+    if X0 in arr:
+        return arr,  np.where(arr == X0)[0][0]
+    
+    # If X0 is not in the array, find the closest element in the array to X0
+    closest_idx = np.abs(arr - X0).argmin()
+    
+    # Replace the closest element with X0
+    arr[closest_idx] = X0
+    
+    return arr, closest_idx
 
-# constants
-drawArea = 14
-GAIN = 1
-nDoublePole = 1
-nDoubleZero = 1
-nSinglePole = 1
-nSingleZero = 2
+def enterINT(string):
+    print(string)
+    while True:
+        try:
+            return int(input())
+        except ValueError:
+            print("Invalid input, enter an integer")
+
+drawArea = 14# enterINT("Enter the draw area: ")
+GAIN = enterINT("Enter the gain: ")
+nDoublePole = 10# enterINT("Enter the number of double poles: ")
+nDoubleZero = 10# enterINT("Enter the number of double zeros: ")
+nSinglePole = 10# enterINT("Enter the number of single poles: ")
+nSingleZero = 10# enterINT("Enter the number of single zeros: ")
+
 
 # Draggable point class
 class DraggablePoint:
@@ -32,6 +56,7 @@ class DraggablePoint:
         self.index = index
         self.Single = Single
         self.Pole = Pole
+        self.origin = point.center
 
     def connect(self):
         """Connect to all the events we need."""
@@ -79,6 +104,10 @@ class DraggablePoint:
         if (self.Single == False):
             y = round(y0 +dy, 1)
         else: y = 0
+
+        if not((x >  - drawArea) and (x < drawArea) and (y > -drawArea) and (y < drawArea)):
+            x, y = self.origin
+
         self.point.set_center((x, y))
         if (self.Single == False) and (self.Pole == True):
             DoubleMirrorPole[self.index].set_center((x, -y))
@@ -141,27 +170,146 @@ def transfer_function_to_sympy(num, den, gain):
 def transferfunction():
     num = []
     den = []
+    AsymptoticDoublePole = []
+    AsymptoticDoubleZero = []
+    AsymptoticSinglePole = []
+    AsymptoticSingleZero = []
     for point in SumPoints:
         x, y = point.center
         if (x >  - drawArea) and (x < drawArea) and (y > -drawArea) and (y < drawArea):
             if (point in DoublePole):
                 den.append(x + y*1j)
                 den.append(x - y*1j)
+                AsymptoticDoublePole.append((x, y))
             elif (point in DoubleZero):
                 num.append(x + y*1j)
                 num.append(x - y*1j)
+                AsymptoticDoubleZero.append((x, y))
             elif (point in SinglePole):
                 den.append(x)
+                AsymptoticSinglePole.append((x, 0))
             elif (point in SingleZero):
                 num.append(x)
+                AsymptoticSingleZero.append((x, 0))
     print('the transfer function has num = ', num,' den = ' ,den, 'and gain = ', GAIN)
     s = signal.lti(num, den, GAIN)
     w, mag, phase = signal.bode(s, n = 1000)
-    mag_plot(midAX, w, mag)
-    phase_plot(rightAX, w, phase)
+    mag_plot(plotMagnitude, w, mag)
+    phase_plot(plotPhase, w, phase)
+    asymptoticPlot(w, AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSinglePole, AsymptoticSingleZero)
     #print('The transfer function is:', transfer_function_to_sympy(num, den, GAIN))
     sp.latex
     fig.suptitle('H(s) = '+ str(transfer_function_to_sympy(num, den, GAIN)), fontsize=16)
+
+def asymptoticMagnitudeArray(slope, w, omega, type, xi=1):
+    _omega = omega
+    w=[min(w), _omega]
+    magnitude = [0, 0]
+    base = 10
+    dec = 0
+    if type == 'double-pole':
+        xi = abs(xi)*(-1)
+    elif type == 'double-zero':
+        xi = abs(xi)
+    
+    if xi > -0.5 and xi < 0.5:
+        w.append(_omega)
+        magnitude.append(
+        np.sign(xi)*20*np.log10(2*np.abs(xi)) #negative sign for poles, positive for zeros
+        )
+        w.append(_omega)
+        magnitude.append(0)
+    while int(omega) > 0:
+        omega = omega/10
+        dec += 1
+    w_max = base**dec
+    w.append(w_max)
+    w.append(w_max*10)
+    magnitude.append(slope*(np.log10(w_max-_omega)))
+    magnitude.append(slope*(np.log10(w_max*10-_omega)))
+    return w, magnitude
+
+def asymptoticPhaseArray(w, omega, type, xi=1):
+    _omega = omega
+    min_w = min(w)
+    minimum = min(min_w, _omega*(10**(-abs(xi))))
+    w=[minimum, _omega*(10**(-abs(xi)))]
+    phase = [0, 0]
+    
+    if type == 'pole':
+        phase.append(-45)
+        phase.append(-90)
+        phase.append(-90)
+        w.append(_omega)
+        w.append(_omega*10**(abs(xi)))
+        w.append(_omega*10**(2*abs(xi)))
+    elif type == 'zero':
+        phase.append(45)
+        phase.append(90)
+        phase.append(90)
+        w.append(_omega)
+        w.append(_omega*10**(abs(xi)))
+        w.append(_omega*10**(2*abs(xi)))
+    elif type == 'double-pole':
+        phase.append(-90)
+        phase.append(-180)
+        phase.append(-180)
+        w.append(_omega)
+        w.append(_omega*10**(abs(xi)))
+        w.append(_omega*10**(2*abs(xi)))
+    elif type == 'double-zero':
+        phase.append(90)
+        phase.append(180)
+        phase.append(180)
+        w.append(_omega)
+        w.append(_omega*10**(abs(xi)))
+        w.append(_omega*10**(2*abs(xi)))
+    return w, phase
+
+
+# Asymptotic plot calculation
+def asymptoticPlot(w, AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSinglePole, AsymptoticSingleZero):
+    plotMagnitudeAsymptotic.clear()
+    plotMagnitudeAsymptotic.grid(True)
+    plotPhaseAsymptotic.clear()
+    plotPhaseAsymptotic.grid(True)
+    constant = 1
+    for (x,y) in AsymptoticDoublePole:
+        omega = np.sqrt(x**2 + y**2)
+        xi = abs(x)/omega
+        constant *= 1/(omega**2)
+        slope = -40
+        W, magnitude = asymptoticMagnitudeArray(slope, w, omega, 'double-pole', xi)
+        plotMagnitudeAsymptotic.semilogx(W, magnitude, color='red', label= f"double pole at {x,y}")
+        W, phase = asymptoticPhaseArray(w, omega, 'double-pole', xi)
+        plotPhaseAsymptotic.semilogx(W, phase, color='red', label= f"double pole at {x,y}")
+    for (x,y) in AsymptoticDoubleZero:
+        omega = np.sqrt(x**2 + y**2)
+        xi = abs(x)/omega
+        constant *= omega**2
+        slope = 40
+        W, magnitude = asymptoticMagnitudeArray(slope, w, omega, 'double-zero', xi)
+        plotMagnitudeAsymptotic.semilogx(W, magnitude, color='blue', label= f"double zero at {x,y}")
+        W, phase = asymptoticPhaseArray(w, omega, 'double-zero', xi)
+        plotPhaseAsymptotic.semilogx(W, phase, color='blue', label= f"double zero at {x,y}")
+    for (x,y) in AsymptoticSinglePole:
+        omega = abs(x)
+        constant *= 1/omega
+        slope = -20
+        W, magnitude = asymptoticMagnitudeArray(slope, w, omega, 'pole')
+        plotMagnitudeAsymptotic.semilogx(W, magnitude, color='pink', label= f"single pole at {x,y}")
+        W, phase = asymptoticPhaseArray(w, omega, 'pole')
+        plotPhaseAsymptotic.semilogx(W, phase, color='pink', label= f"single pole at {x,y}")
+    for (x,y) in AsymptoticSingleZero:
+        omega = abs(x)
+        constant *= omega
+        slope = 20
+        W, magnitude = asymptoticMagnitudeArray(slope, w, omega, 'zero')
+        plotMagnitudeAsymptotic.semilogx(W, magnitude, color='cyan', label= f"single zero at {x,y}")
+        W, phase = asymptoticPhaseArray(w, omega, 'zero')
+        plotPhaseAsymptotic.semilogx(W, phase, color='cyan', label= f"single zero at {x,y}")
+    plotMagnitudeAsymptotic.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+    plotPhaseAsymptotic.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
 
 # Pole-Zero map subplot configuration
 def pole_zero_map(ax):
@@ -171,11 +319,14 @@ def pole_zero_map(ax):
         ax.hlines(i, -drawArea, drawArea, color='gray', linestyle='dashed', linewidth=0.5)
     ax.arrow(-drawArea, 0, 2*drawArea, 0, head_width=0.5, head_length=0.5, fc='grey', ec='black', label='Real')
     ax.arrow(0, -drawArea, 0, 2*drawArea, head_width=0.5, head_length=0.5, fc='grey', ec='black', label='Imaginary')
-    ax.set_xticks(np.arange(-1*drawArea-10, drawArea+1, 1))
-    xticksLabels = [str(i) for i in range(-1*drawArea-10, drawArea+1, 1)]
-    for i in range(0, 11):
-        xticksLabels[i] = ""
-    ax.set_xticklabels(xticksLabels)
+    ticktoremove = np.arange(-drawArea-10, -drawArea, 1)
+    def remove_tick(x, pos):
+        if x < -drawArea:
+            return ''
+        else:
+            return str(round(x,1))
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(remove_tick))
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(remove_tick))
     recBlank = Rectangle((-drawArea, -drawArea), 2*drawArea, 2*drawArea, fill = False, edgecolor='black')
     recSingle = Rectangle((-1*drawArea-10, -0.75), 5, 1.5, fill=False)
     recDouble = Rectangle((-1*drawArea-5, -2.5), 5, 5, fill=False)
@@ -206,8 +357,15 @@ def phase_plot(ax, w, phase):
     ax.set_title('Bode Plot - Phase plot')
     ax.grid(True)
 
+# Main function
 # Create the figure and subplots
-fig, (leftAX, midAX, rightAX) = plt.subplots(1, 3, figsize=(15, 5))
+fig = plt.figure(tight_layout=True)
+gs = gridspec.GridSpec(2, 3)
+leftAX = fig.add_subplot(gs[:, 0])
+plotMagnitude = fig.add_subplot(gs[0, 1])
+plotPhase = fig.add_subplot(gs[1, 1])
+plotMagnitudeAsymptotic = fig.add_subplot(gs[0, 2])
+plotPhaseAsymptotic = fig.add_subplot(gs[1, 2])
 
 # Arrays for the poles and zeros
 DoublePole = [Circle((-1*drawArea-5+1.5, 1), radius=0.5, color='red', fill = True) for _ in range(nDoublePole)]
@@ -261,3 +419,7 @@ for point in SingleZero:
 
 # running the GUI
 plt.show()
+
+
+
+

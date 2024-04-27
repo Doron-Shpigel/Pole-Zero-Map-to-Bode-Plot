@@ -1,6 +1,6 @@
 #Title: Pole-Zero map to Bode plot GUI
 #made by Doron Shpigel - doron.shpigel@gmail.com
-#2024-07-20
+#2024-08-26
 #This code is a simple GUI for moving poles and zeros in a pole-zero map and seeing the effect on the bode plot
 
 
@@ -13,14 +13,21 @@ import sympy as sp
 from sympy import init_printing
 init_printing() 
 
+def enterINT(string):
+    print(string)
+    while True:
+        try:
+            return int(input())
+        except ValueError:
+            print("Invalid input, enter an integer")
 
-# constants
-drawArea = 14
-GAIN = 1
-nDoublePole = 1
-nDoubleZero = 1
-nSinglePole = 1
-nSingleZero = 2
+drawArea = 10# enterINT("Enter the draw area: ")
+GAIN = enterINT("Enter the gain: ")
+nDoublePole = 10# enterINT("Enter the number of double poles: ")
+nDoubleZero = 10# enterINT("Enter the number of double zeros: ")
+nSinglePole = 10# enterINT("Enter the number of single poles: ")
+nSingleZero = 10# enterINT("Enter the number of single zeros: ")
+
 
 # Draggable point class
 class DraggablePoint:
@@ -32,6 +39,7 @@ class DraggablePoint:
         self.index = index
         self.Single = Single
         self.Pole = Pole
+        self.origin = point.center
 
     def connect(self):
         """Connect to all the events we need."""
@@ -79,6 +87,10 @@ class DraggablePoint:
         if (self.Single == False):
             y = round(y0 +dy, 1)
         else: y = 0
+
+        if not((x >  - drawArea) and (x < drawArea) and (y > -drawArea) and (y < drawArea)):
+            x, y = self.origin
+
         self.point.set_center((x, y))
         if (self.Single == False) and (self.Pole == True):
             DoubleMirrorPole[self.index].set_center((x, -y))
@@ -171,11 +183,14 @@ def pole_zero_map(ax):
         ax.hlines(i, -drawArea, drawArea, color='gray', linestyle='dashed', linewidth=0.5)
     ax.arrow(-drawArea, 0, 2*drawArea, 0, head_width=0.5, head_length=0.5, fc='grey', ec='black', label='Real')
     ax.arrow(0, -drawArea, 0, 2*drawArea, head_width=0.5, head_length=0.5, fc='grey', ec='black', label='Imaginary')
-    ax.set_xticks(np.arange(-1*drawArea-10, drawArea+1, 1))
-    xticksLabels = [str(i) for i in range(-1*drawArea-10, drawArea+1, 1)]
-    for i in range(0, 11):
-        xticksLabels[i] = ""
-    ax.set_xticklabels(xticksLabels)
+    ticktoremove = np.arange(-drawArea-10, -drawArea, 1)
+    def remove_tick(x, pos):
+        if x < -drawArea:
+            return ''
+        else:
+            return str(round(x,1))
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(remove_tick))
+    ax.yaxis.set_major_formatter(plt.FuncFormatter(remove_tick))
     recBlank = Rectangle((-drawArea, -drawArea), 2*drawArea, 2*drawArea, fill = False, edgecolor='black')
     recSingle = Rectangle((-1*drawArea-10, -0.75), 5, 1.5, fill=False)
     recDouble = Rectangle((-1*drawArea-5, -2.5), 5, 5, fill=False)
@@ -206,6 +221,7 @@ def phase_plot(ax, w, phase):
     ax.set_title('Bode Plot - Phase plot')
     ax.grid(True)
 
+# Main function
 # Create the figure and subplots
 fig, (leftAX, midAX, rightAX) = plt.subplots(1, 3, figsize=(15, 5))
 
@@ -261,3 +277,7 @@ for point in SingleZero:
 
 # running the GUI
 plt.show()
+
+
+
+
