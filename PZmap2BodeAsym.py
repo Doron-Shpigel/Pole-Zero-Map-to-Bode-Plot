@@ -217,8 +217,8 @@ def transferfunction():
                 AsymptoticSingleZero.append((x, 0))
     print('the transfer function has num = ', num,' den = ' ,den, 'and gain = ', GAIN)
     s = signal.lti(num, den, GAIN)
-    print("The poles are: ", s.poles)
-    print("The zeros are: ", s.zeros)
+    #print("The poles are: ", s.poles)
+    #print("The zeros are: ", s.zeros)
     w, mag, phase = signal.bode(s, n = 1000)
     mag_plot(plotMagnitude, w, mag)
     phase_plot(plotPhase, w, phase)
@@ -330,7 +330,10 @@ def find_omegas(AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSinglePole
         omega = omega/10
         dec += 1
     max_omega_dec = base**dec
-    return max_omega_value, max_omega_dec, min_omega_value
+    while base> min_omega:
+        base = base/10
+    min_omega_dec = base
+    return max_omega_value, max_omega_dec, min_omega_value, min_omega_dec
 # Asymptotic plot calculation
 #TODO: make global W axis with all omegas
 #TODO: make AsymptoticOriginPole
@@ -343,9 +346,9 @@ def asymptoticPlot(w, AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSing
     plotPhaseAsymptotic.grid(True)
     #place holders for the contribution of each calculation
     constant = 1
-    max_omega_value, max_omega_dec, min_omega_value = find_omegas(AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSinglePole, AsymptoticSingleZero)
-    W_sum_Mag = np.geomspace(min_omega_value, max_omega_dec*10)
-    print(W_sum_Mag)
+    max_omega_value, max_omega_dec, min_omega_value, min_omega_dec = find_omegas(AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSinglePole, AsymptoticSingleZero)
+    W_sum_Mag = np.geomspace(min_omega_dec, max_omega_dec*10)
+    #print(W_sum_Mag)
     sum_curve = np.zeros(len(W_sum_Mag))
     for (x,y) in AsymptoticDoublePole:
         omega = np.sqrt(x**2 + y**2)
