@@ -11,6 +11,7 @@ import matplotlib.gridspec as gridspec
 from matplotlib.patches import Circle, Rectangle, Wedge
 from matplotlib.widgets import TextBox
 from scipy import signal
+from scipy.interpolate import interp1d
 import sympy as sp
 from sympy import init_printing
 init_printing() 
@@ -49,6 +50,20 @@ nSingleZero = 10# enterINT("Enter the number of single zeros: ")
 
 
 
+def sum_curves(curves):
+    # Find the common x-coordinate range
+    x_min = min(min(curve[0]) for curve in curves)
+    x_max = max(max(curve[0]) for curve in curves)
+    x_common = np.linspace(x_min, x_max, 1000)  # You can adjust the number of points as needed
+
+    # Interpolate each curve onto the common x-coordinate range and sum them up
+    sum_curve = np.zeros_like(x_common)
+    for x, y in curves:
+        f = interp1d(x, y, kind='linear')
+        y_interp = f(x_common)
+        sum_curve += y_interp
+
+    return x_common, sum_curve
 
 
 
@@ -202,6 +217,8 @@ def transferfunction():
                 AsymptoticSingleZero.append((x, 0))
     print('the transfer function has num = ', num,' den = ' ,den, 'and gain = ', GAIN)
     s = signal.lti(num, den, GAIN)
+    print("The poles are: ", s.poles)
+    print("The zeros are: ", s.zeros)
     w, mag, phase = signal.bode(s, n = 1000)
     mag_plot(plotMagnitude, w, mag)
     phase_plot(plotPhase, w, phase)
@@ -220,14 +237,16 @@ def asymptoticMagnitudeArray(slope, w, omega, type, xi=1):
         xi = abs(xi)*(-1)
     elif type == 'double-zero':
         xi = abs(xi)
-    
+    #handle the peak case:
+    w.append(_omega)
     if xi > -0.5 and xi < 0.5:
-        w.append(_omega)
         magnitude.append(
         np.sign(xi)*20*np.log10(2*np.abs(xi)) #negative sign for poles, positive for zeros
         )
-        w.append(_omega)
+    else:
         magnitude.append(0)
+    w.append(_omega)
+    magnitude.append(0)
     while int(omega) > 0:
         omega = omega/10
         dec += 1
@@ -275,20 +294,68 @@ def asymptoticPhaseArray(w, omega, type, xi=1):
         w.append(_omega*10**(2*abs(xi)))
     return w, phase
 
-
+def find_omegas(AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSinglePole, AsymptoticSingleZero):
+    min_omega = 0.1
+    max_omega = 0
+    for (x,y) in AsymptoticDoublePole:
+        omega = np.sqrt(x**2 + y**2)
+        if omega > max_omega:
+            max_omega = omega
+        if omega < min_omega:
+            min_omega = omega
+    for (x,y) in AsymptoticDoubleZero:
+        omega = np.sqrt(x**2 + y**2)
+        if omega > max_omega:
+            max_omega = omega
+        if omega < min_omega:
+            min_omega = omega
+    for (x,y) in AsymptoticSinglePole:
+        omega = abs(x)
+        if omega > max_omega:
+            max_omega = omega
+        if omega < min_omega:
+            min_omega = omega
+    for (x,y) in AsymptoticSingleZero:
+        omega = abs(x)
+        if omega > max_omega:
+            max_omega = omega
+        if omega < min_omega:
+            min_omega = omega
+    omega=max_omega
+    max_omega_value = max_omega
+    min_omega_value = min_omega
+    dec = 0
+    base = 10
+    while int(omega) > 0:
+        omega = omega/10
+        dec += 1
+    max_omega_dec = base**dec
+    return max_omega_value, max_omega_dec, min_omega_value
 # Asymptotic plot calculation
+#TODO: make global W axis with all omegas
+#TODO: make AsymptoticOriginPole
+#TODO: make AsymptoticOriginZero
+#TODO: make make sum curve for phase
 def asymptoticPlot(w, AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSinglePole, AsymptoticSingleZero):
     plotMagnitudeAsymptotic.clear()
     plotMagnitudeAsymptotic.grid(True)
     plotPhaseAsymptotic.clear()
     plotPhaseAsymptotic.grid(True)
+    #place holders for the contribution of each calculation
     constant = 1
+    max_omega_value, max_omega_dec, min_omega_value = find_omegas(AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSinglePole, AsymptoticSingleZero)
+    W_sum_Mag = np.geomspace(min_omega_value, max_omega_dec*10)
+    print(W_sum_Mag)
+    sum_curve = np.zeros(len(W_sum_Mag))
     for (x,y) in AsymptoticDoublePole:
         omega = np.sqrt(x**2 + y**2)
         xi = abs(x)/omega
         constant *= 1/(omega**2)
         slope = -40
         W, magnitude = asymptoticMagnitudeArray(slope, w, omega, 'double-pole', xi)
+        #interpolating the magnitude to the common x-axis
+        f = interp1d(W, magnitude, kind='linear')
+        sum_curve += f(np.clip(W_sum_Mag, min(W), max(W)))
         plotMagnitudeAsymptotic.semilogx(W, magnitude, color='red', label= f"double pole at {x,y}")
         W, phase = asymptoticPhaseArray(w, omega, 'double-pole', xi)
         plotPhaseAsymptotic.semilogx(W, phase, color='red', label= f"double pole at {x,y}")
@@ -298,6 +365,9 @@ def asymptoticPlot(w, AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSing
         constant *= omega**2
         slope = 40
         W, magnitude = asymptoticMagnitudeArray(slope, w, omega, 'double-zero', xi)
+        #interpolating the magnitude to the common x-axis
+        f = interp1d(W, magnitude, kind='linear')
+        sum_curve += f(np.clip(W_sum_Mag, min(W), max(W)))
         plotMagnitudeAsymptotic.semilogx(W, magnitude, color='blue', label= f"double zero at {x,y}")
         W, phase = asymptoticPhaseArray(w, omega, 'double-zero', xi)
         plotPhaseAsymptotic.semilogx(W, phase, color='blue', label= f"double zero at {x,y}")
@@ -306,6 +376,9 @@ def asymptoticPlot(w, AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSing
         constant *= 1/omega
         slope = -20
         W, magnitude = asymptoticMagnitudeArray(slope, w, omega, 'pole')
+        #interpolating the magnitude to the common x-axis
+        f = interp1d(W, magnitude, kind='linear')
+        sum_curve += f(np.clip(W_sum_Mag, min(W), max(W)))
         plotMagnitudeAsymptotic.semilogx(W, magnitude, color='pink', label= f"single pole at {x,y}")
         W, phase = asymptoticPhaseArray(w, omega, 'pole')
         plotPhaseAsymptotic.semilogx(W, phase, color='pink', label= f"single pole at {x,y}")
@@ -314,16 +387,27 @@ def asymptoticPlot(w, AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSing
         constant *= omega
         slope = 20
         W, magnitude = asymptoticMagnitudeArray(slope, w, omega, 'zero')
+        #interpolating the magnitude to the common x-axis
+        f = interp1d(W, magnitude, kind='linear')
+        sum_curve += f(np.clip(W_sum_Mag, min(W), max(W)))
         plotMagnitudeAsymptotic.semilogx(W, magnitude, color='cyan', label= f"single zero at {x,y}")
         W, phase = asymptoticPhaseArray(w, omega, 'zero')
         plotPhaseAsymptotic.semilogx(W, phase, color='cyan', label= f"single zero at {x,y}")
+    #constant K calculation
     K = GAIN*constant
-    print('K = ', K)
-    print('sign k = ', np.sign(K))
     W = w
-    W = np.append(W, max(w)*10)
-    plotMagnitudeAsymptotic.semilogx(W, 20*np.log10(abs(K))*np.ones(len(W)), color='black', label='constant K')
-    plotPhaseAsymptotic.semilogx(W, (1-np.sign(K))*90*np.ones(len(W)), color='black', label='constant K')
+    W = np.geomspace(min_omega_value, max_omega_dec*10)
+    Kmagnitude = 20*np.log10(abs(K))*np.ones(len(W))
+    #interpolating the magnitude to the common x-axis
+    f = interp1d(W, Kmagnitude, kind='linear')
+    sum_curve += f(np.clip(W_sum_Mag, min(W), max(W)))
+    Kphase=(1-np.sign(K))*90*np.ones(len(W))
+    #plotting constant K
+    plotMagnitudeAsymptotic.semilogx(W, Kmagnitude, color='green', label=f'constant K={round(K,2)}')
+    plotPhaseAsymptotic.semilogx(W, Kphase, color='green', label=f'constant K={round(K,2)}')
+    #plotting the sum of all contributions
+    plotMagnitudeAsymptotic.semilogx(W_sum_Mag, sum_curve, color='black', label='sum')
+    #adding legend
     plotMagnitudeAsymptotic.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
     plotPhaseAsymptotic.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
     plotMagnitudeAsymptotic.set_title('Asymptotic Bode Plot - Magnitude plot')
