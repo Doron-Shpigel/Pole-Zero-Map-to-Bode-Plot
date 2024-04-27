@@ -1,1 +1,1 @@
-ax.set_xticks
+w

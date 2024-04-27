@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 from matplotlib.patches import Circle, Rectangle, Wedge
+from matplotlib.widgets import TextBox
 from scipy import signal
 import sympy as sp
 from sympy import init_printing
@@ -39,11 +40,19 @@ def enterINT(string):
             print("Invalid input, enter an integer")
 
 drawArea = 14# enterINT("Enter the draw area: ")
-GAIN = enterINT("Enter the gain: ")
+GAIN = 1# enterINT("Enter the gain: ")
 nDoublePole = 10# enterINT("Enter the number of double poles: ")
 nDoubleZero = 10# enterINT("Enter the number of double zeros: ")
 nSinglePole = 10# enterINT("Enter the number of single poles: ")
 nSingleZero = 10# enterINT("Enter the number of single zeros: ")
+
+
+
+
+
+
+
+
 
 
 # Draggable point class
@@ -308,8 +317,17 @@ def asymptoticPlot(w, AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSing
         plotMagnitudeAsymptotic.semilogx(W, magnitude, color='cyan', label= f"single zero at {x,y}")
         W, phase = asymptoticPhaseArray(w, omega, 'zero')
         plotPhaseAsymptotic.semilogx(W, phase, color='cyan', label= f"single zero at {x,y}")
+    K = GAIN*constant
+    print('K = ', K)
+    print('sign k = ', np.sign(K))
+    W = w
+    W = np.append(W, max(w)*10)
+    plotMagnitudeAsymptotic.semilogx(W, 20*np.log10(abs(K))*np.ones(len(W)), color='black', label='constant K')
+    plotPhaseAsymptotic.semilogx(W, (1-np.sign(K))*90*np.ones(len(W)), color='black', label='constant K')
     plotMagnitudeAsymptotic.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
     plotPhaseAsymptotic.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+    plotMagnitudeAsymptotic.set_title('Asymptotic Bode Plot - Magnitude plot')
+    plotPhaseAsymptotic.set_title('Asymptotic Bode Plot - Phase plot')
 
 # Pole-Zero map subplot configuration
 def pole_zero_map(ax):
@@ -358,15 +376,23 @@ def phase_plot(ax, w, phase):
     ax.grid(True)
 
 # Main function
+
+def changeGain(text):
+    global GAIN
+    GAIN = int(text)
 # Create the figure and subplots
-fig = plt.figure(tight_layout=True)
+fig = plt.figure(tight_layout=False)
 gs = gridspec.GridSpec(2, 3)
 leftAX = fig.add_subplot(gs[:, 0])
 plotMagnitude = fig.add_subplot(gs[0, 1])
 plotPhase = fig.add_subplot(gs[1, 1])
 plotMagnitudeAsymptotic = fig.add_subplot(gs[0, 2])
 plotPhaseAsymptotic = fig.add_subplot(gs[1, 2])
-
+# Adding TextBox to figure to change the gain
+graphBox = fig.add_axes([0.074, 0.06, 0.075, 0.075])
+txtBox = TextBox(graphBox, "Gain: ")
+txtBox.on_submit(changeGain)
+txtBox.set_val("1")
 # Arrays for the poles and zeros
 DoublePole = [Circle((-1*drawArea-5+1.5, 1), radius=0.5, color='red', fill = True) for _ in range(nDoublePole)]
 DoubleMirrorPole = [Circle((-1*drawArea-5+1.5, -1), radius=0.5, color='pink', fill = True) for _ in range(nDoublePole)]
