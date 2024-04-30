@@ -253,8 +253,8 @@ def asymptoticMagnitudeArray(slope, w, omega, type, xi=1):
     w_max = base**dec
     w.append(w_max)
     w.append(w_max*10)
-    magnitude.append(slope*(np.log10(w_max-_omega)))
-    magnitude.append(slope*(np.log10(w_max*10-_omega)))
+    magnitude.append(slope*(np.log10(np.ceil(w_max-_omega))))
+    magnitude.append(slope*(np.log10(np.ceil(w_max*10-_omega))))
     return w, magnitude
 
 def asymptoticPhaseArray(w, omega, type, xi=1):
@@ -466,7 +466,7 @@ def phase_plot(ax, w, phase):
 
 def changeGain(text):
     global GAIN
-    GAIN = int(text)
+    GAIN = float(text)
 # Create the figure and subplots
 fig = plt.figure(tight_layout=False)
 gs = gridspec.GridSpec(2, 3)
