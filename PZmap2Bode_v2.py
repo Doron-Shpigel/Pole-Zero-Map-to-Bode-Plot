@@ -373,7 +373,7 @@ def asymptoticPlot(frequency_axis, AsymptoticDoublePole, AsymptoticDoubleZero, A
         magnitude= asymptoticMagnitudeArray(slope, asymptotic_frequency_axis, omega, 'double-zero', xi)
         (line_magnitude, ) = plotMagnitudeAsymptotic.semilogx(asymptotic_frequency_axis, magnitude, color='blue', label= f"double zero at {x,y}")
         phase = asymptoticPhaseArray(asymptotic_frequency_axis, omega, 'double-zero', xi)
-        (lines_phase, ) = plotPhaseAsymptotic.semilogx(asymptotic_frequency_axis, phase, color='blue', label= f"double zero at {x,y}")
+        (line_phase, ) = plotPhaseAsymptotic.semilogx(asymptotic_frequency_axis, phase, color='blue', label= f"double zero at {x,y}")
         summery.add_magnitude(magnitude)
         summery.add_phase(phase)
         lines_magnitude.append(line_magnitude)
