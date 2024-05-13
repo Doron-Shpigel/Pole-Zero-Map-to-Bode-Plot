@@ -3,6 +3,9 @@
 #2024-08-26
 #This code is a simple GUI for moving poles and zeros in a pole-zero map and seeing the effect on the bode plot
 
+#TODO: make AsymptoticOriginPole
+#TODO: make AsymptoticOriginZero
+#TODO: make make sum curve for asymptotic phase
 
 # Importing the required libraries
 import numpy as np
@@ -16,7 +19,8 @@ import sympy as sp
 from sympy import init_printing
 init_printing() 
 
-
+print_points_in_terminal = False
+pick_radius_for_legend = 5
 
 
 def initialize_array_with_value(Xmin, Xmax, n, X0):
@@ -52,21 +56,41 @@ nSingleZero = 10# enterINT("Enter the number of single zeros: ")
 
 
 
+class Sum_Curve:
+    def __init__(self, frequency_axis):
+        self.frequency_axis = frequency_axis
+        self.magnitude = np.zeros(len(frequency_axis))
+        self.phase = np.zeros(len(frequency_axis))
+        self.constant = 1
+    def add_double_pole(self, x, y):
+        omega = np.sqrt(x**2 + y**2)
+        self.constant *= 1/(omega**2)
+    def add_double_zero(self, x, y):
+        omega = np.sqrt(x**2 + y**2)
+        self.constant *= omega**2
+    def add_single_pole(self, x, y):
+        omega = abs(x)
+        self.constant *= 1/omega
+    def add_single_zero(self, x, y):
+        omega = abs(x)
+        self.constant *= omega
+    #constant K calculation
+    def calculate_constant(self):
+        self.K = GAIN*self.constant
+        self.Kmagnitude = 20*np.log10(abs(self.K))*np.ones(len(self.frequency_axis))
+        self.Kphase=(1-np.sign(self.K))*90*np.ones(len(self.frequency_axis))
+        return self.K, self.Kmagnitude, self.Kphase
+    def add_magnitude(self, magnitude):
+        self.magnitude = np.add(self.magnitude, magnitude)
+    def add_phase(self, phase):
+        self.phase = np.add(self.phase, phase)
+    def sum(self):
+        self.add_magnitude(self.Kmagnitude)
+        self.add_phase(self.Kphase)
+        return self.magnitude, self.phase
 
-def sum_curves(curves):
-    # Find the common x-coordinate range
-    x_min = min(min(curve[0]) for curve in curves)
-    x_max = max(max(curve[0]) for curve in curves)
-    x_common = np.linspace(x_min, x_max, 1000)  # You can adjust the number of points as needed
 
-    # Interpolate each curve onto the common x-coordinate range and sum them up
-    sum_curve = np.zeros_like(x_common)
-    for x, y in curves:
-        f = interp1d(x, y, kind='linear')
-        y_interp = f(x_common)
-        sum_curve += y_interp
 
-    return x_common, sum_curve
 
 
 
@@ -140,7 +164,7 @@ class DraggablePoint:
         contains, attrd = self.point.contains(event)
         if not contains:
             return
-        print('event contains', self.point.center)
+        # print('event contains', self.point.center)
         self.press = self.point.center, (event.xdata, event.ydata)
         DraggablePoint.lock = self
 
@@ -176,14 +200,18 @@ class DraggablePoint:
         self.point.set_center((x, y))
         if (self.Single == False) and (self.Pole == True):
             DoubleMirrorPole[self.index].set_center((x, -y))
-            print('double pole at x =', x, 'y =', y)
+            if print_points_in_terminal:
+                print('double pole at x =', x, 'y =', y)
         elif (self.Single == False) and (self.Pole == False):
             DoubleMirrorZero[self.index].set_center((x, -y))
-            print('double zero at x =', x, 'y =', y)
+            if print_points_in_terminal:
+                print('double zero at x =', x, 'y =', y)
         elif (self.Single == True) and (self.Pole == True):
-            print('single pole at x =', x, 'y = 0')
+            if print_points_in_terminal:
+                print('single pole at x =', x, 'y = 0')
         elif (self.Single == True) and (self.Pole == False):
-            print('single zero at x =', x, 'y = 0')
+            if print_points_in_terminal:
+                print('single zero at x =', x, 'y = 0')
 
         canvas = self.point.figure.canvas
         axes = self.point.axes
@@ -272,12 +300,12 @@ def asymptoticMagnitudeArray(slope, frequency_axis, omega, type, xi=1):
     magnitude = np.zeros(len(frequency_axis))
     omega_index = np.searchsorted(frequency_axis, omega)
     #handle the peak case:
-    peak_index = omega_index + 1
+    peak_index = omega_index + 1 #for the peak beginning
     if type == 'double-pole':
         xi = abs(xi)*(-1)
     elif type == 'double-zero':
         xi = abs(xi)
-    #handle the peak case:
+    #insert the peak value or 0
     if xi > -0.5 and xi < 0.5:
         magnitude[peak_index] = np.sign(xi)*20*np.log10(2*np.abs(xi)) #negative sign for poles, positive for zeros
     else:
@@ -292,154 +320,134 @@ def asymptoticMagnitudeArray(slope, frequency_axis, omega, type, xi=1):
         magnitude[i] = m*np.log10(frequency_axis[i]) -m*np.log10(frequency_axis[x1])
     return magnitude
 
-def asymptoticPhaseArray(w, omega, type, xi=1):
-    _omega = omega
-    min_w = min(w)
-    minimum = min(min_w, _omega*(10**(-abs(xi))))
-    w=[minimum, _omega*(10**(-abs(xi)))]
-    phase = [0, 0]
-    
-    if type == 'pole':
-        phase.append(-45)
-        phase.append(-90)
-        phase.append(-90)
-        w.append(_omega)
-        w.append(_omega*10**(abs(xi)))
-        w.append(_omega*10**(2*abs(xi)))
-    elif type == 'zero':
-        phase.append(45)
-        phase.append(90)
-        phase.append(90)
-        w.append(_omega)
-        w.append(_omega*10**(abs(xi)))
-        w.append(_omega*10**(2*abs(xi)))
-    elif type == 'double-pole':
-        phase.append(-90)
-        phase.append(-180)
-        phase.append(-180)
-        w.append(_omega)
-        w.append(_omega*10**(abs(xi)))
-        w.append(_omega*10**(2*abs(xi)))
-    elif type == 'double-zero':
-        phase.append(90)
-        phase.append(180)
-        phase.append(180)
-        w.append(_omega)
-        w.append(_omega*10**(abs(xi)))
-        w.append(_omega*10**(2*abs(xi)))
-    return w, phase
+def asymptoticPhaseArray(frequency_axis, omega, type, xi=1):
+    phase = np.zeros(len(frequency_axis))
+    low_freq_index = np.searchsorted(frequency_axis, omega/10, side='right')
+    high_freq_index = np.searchsorted(frequency_axis, omega*10, side='left')
+    #for the low frequencies we already defined the phase 0
+    for i in range(high_freq_index, len(frequency_axis)):
+        if type == 'pole':
+            phase[i] = -90
+        elif type == 'zero':
+            phase[i] = 90
+        elif type == 'double-pole':
+            phase[i] = -180
+        elif type == 'double-zero':
+            phase[i] = 180
+    #we need to find the linear slope between the low and high frequencies
+    slope = phase[high_freq_index] 
+    m = slope/np.log10(frequency_axis[high_freq_index]/frequency_axis[low_freq_index])
+    for i in range(low_freq_index, high_freq_index):
+        phase[i] = m*np.log10(frequency_axis[i]) - m*np.log10(frequency_axis[low_freq_index])
+    return phase
 
-def Asymptotic_frequency_axis(frequency_axis, AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSinglePole, AsymptoticSingleZero):
-    min_omega = min(frequency_axis)
-    max_omega = max(frequency_axis)
-    for (x,y) in AsymptoticDoublePole:
-        omega = np.sqrt(x**2 + y**2)
-        if omega > max_omega:
-            max_omega = omega
-        if omega < min_omega:
-            min_omega = omega
-    for (x,y) in AsymptoticDoubleZero:
-        omega = np.sqrt(x**2 + y**2)
-        if omega > max_omega:
-            max_omega = omega
-        if omega < min_omega:
-            min_omega = omega
-    for (x,y) in AsymptoticSinglePole:
-        omega = abs(x)
-        if omega > max_omega:
-            max_omega = omega
-        if omega < min_omega:
-            min_omega = omega
-    for (x,y) in AsymptoticSingleZero:
-        omega = abs(x)
-        if omega > max_omega:
-            max_omega = omega
-        if omega < min_omega:
-            min_omega = omega
-    omega=max_omega
-    max_omega_value = max_omega
-    min_omega_value = min_omega
-    dec = 0
-    base = 10
-    while int(omega) > 0:
-        omega = omega/10
-        dec += 1
-    max_omega_dec = base**dec
-    while base> min_omega:
-        base = base/10
-    min_omega_dec = base
-    asymptotic_frequency_axis = np.geomspace(min_omega_dec, max_omega_dec, num = len(frequency_axis))
-    return asymptotic_frequency_axis
+
 # Asymptotic plot calculation
-#TODO: make AsymptoticOriginPole
-#TODO: make AsymptoticOriginZero
-#TODO: make make sum curve for phase
 def asymptoticPlot(frequency_axis, AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSinglePole, AsymptoticSingleZero):
     plotMagnitudeAsymptotic.clear()
     plotMagnitudeAsymptotic.grid(True)
     plotPhaseAsymptotic.clear()
     plotPhaseAsymptotic.grid(True)
     #place holders for the contribution of each calculation
-    constant = 1
     asymptotic_frequency_axis = global_asymptotic_frequency_axis(frequency_axis, AsymptoticDoublePole, AsymptoticDoubleZero, AsymptoticSinglePole, AsymptoticSingleZero)
-    sum_curve = np.zeros(len(asymptotic_frequency_axis))
+    summery = Sum_Curve(asymptotic_frequency_axis)
+    lines_magnitude=[]
+    lines_phase=[]
     for (x,y) in AsymptoticDoublePole:
+        summery.add_double_pole(x, y)
         omega = np.sqrt(x**2 + y**2)
         xi = abs(x)/omega
-        constant *= 1/(omega**2)
         slope = -40
         magnitude= asymptoticMagnitudeArray(slope, asymptotic_frequency_axis, omega, 'double-pole', xi)
-        sum_curve = np.add(sum_curve, magnitude) #summing the contribution of each pole
-        plotMagnitudeAsymptotic.semilogx(asymptotic_frequency_axis, magnitude, color='red', label= f"double pole at {x,y}")
-        W, phase = asymptoticPhaseArray(frequency_axis, omega, 'double-pole', xi)
-        plotPhaseAsymptotic.semilogx(W, phase, color='red', label= f"double pole at {x,y}")
+        (line_magnitude, ) = plotMagnitudeAsymptotic.semilogx(asymptotic_frequency_axis, magnitude, color='red', label= f"double pole at {x,y}")
+        phase = asymptoticPhaseArray(asymptotic_frequency_axis, omega, 'double-pole', xi)
+        (line_phase, ) = plotPhaseAsymptotic.semilogx(asymptotic_frequency_axis, phase, color='red', label= f"double pole at {x,y}")
+        summery.add_magnitude(magnitude)
+        summery.add_phase(phase)
+        lines_magnitude.append(line_magnitude)
+        lines_phase.append(line_phase)
     for (x,y) in AsymptoticDoubleZero:
+        summery.add_double_zero(x, y)
         omega = np.sqrt(x**2 + y**2)
         xi = abs(x)/omega
-        constant *= omega**2
         slope = 40
         magnitude= asymptoticMagnitudeArray(slope, asymptotic_frequency_axis, omega, 'double-zero', xi)
-        sum_curve = np.add(sum_curve, magnitude) #summing the contribution of each pole
-        plotMagnitudeAsymptotic.semilogx(asymptotic_frequency_axis, magnitude, color='blue', label= f"double zero at {x,y}")
-        W, phase = asymptoticPhaseArray(frequency_axis, omega, 'double-zero', xi)
-        plotPhaseAsymptotic.semilogx(W, phase, color='blue', label= f"double zero at {x,y}")
+        (line_magnitude, ) = plotMagnitudeAsymptotic.semilogx(asymptotic_frequency_axis, magnitude, color='blue', label= f"double zero at {x,y}")
+        phase = asymptoticPhaseArray(asymptotic_frequency_axis, omega, 'double-zero', xi)
+        (lines_phase, ) = plotPhaseAsymptotic.semilogx(asymptotic_frequency_axis, phase, color='blue', label= f"double zero at {x,y}")
+        summery.add_magnitude(magnitude)
+        summery.add_phase(phase)
+        lines_magnitude.append(line_magnitude)
+        lines_phase.append(line_phase)
     for (x,y) in AsymptoticSinglePole:
+        summery.add_single_pole(x, y)
         omega = abs(x)
-        constant *= 1/omega
         slope = -20
         magnitude= asymptoticMagnitudeArray(slope, asymptotic_frequency_axis, omega, 'pole')
-        sum_curve = np.add(sum_curve, magnitude) #summing the contribution of each pole
-        plotMagnitudeAsymptotic.semilogx(asymptotic_frequency_axis, magnitude, color='pink', label= f"single pole at {x,y}")
-        W, phase = asymptoticPhaseArray(frequency_axis, omega, 'pole')
-        plotPhaseAsymptotic.semilogx(W, phase, color='pink', label= f"single pole at {x,y}")
+        (line_magnitude, ) = plotMagnitudeAsymptotic.semilogx(asymptotic_frequency_axis, magnitude, color='pink', label= f"single pole at {x,y}")
+        phase = asymptoticPhaseArray(asymptotic_frequency_axis, omega, 'pole')
+        (line_phase) = plotPhaseAsymptotic.semilogx(asymptotic_frequency_axis, phase, color='pink', label= f"single pole at {x,y}")
+        summery.add_magnitude(magnitude)
+        summery.add_phase(phase)
+        lines_magnitude.append(line_magnitude)
+        lines_phase.append(line_phase)
     for (x,y) in AsymptoticSingleZero:
+        summery.add_single_zero(x, y)
         omega = abs(x)
-        constant *= omega
         slope = 20
         magnitude= asymptoticMagnitudeArray(slope, asymptotic_frequency_axis, omega, 'zero')
-        sum_curve = np.add(sum_curve, magnitude) #summing the contribution of each pole
-        plotMagnitudeAsymptotic.semilogx(asymptotic_frequency_axis, magnitude, color='cyan', label= f"single zero at {x,y}")
-        W, phase = asymptoticPhaseArray(frequency_axis, omega, 'zero')
-        plotPhaseAsymptotic.semilogx(W, phase, color='cyan', label= f"single zero at {x,y}")
+        (line_magnitude, ) = plotMagnitudeAsymptotic.semilogx(asymptotic_frequency_axis, magnitude, color='cyan', label= f"single zero at {x,y}")
+        phase = asymptoticPhaseArray(asymptotic_frequency_axis, omega, 'zero')
+        (line_phase, ) = plotPhaseAsymptotic.semilogx(asymptotic_frequency_axis, phase, color='cyan', label= f"single zero at {x,y}")
+        summery.add_magnitude(magnitude)
+        summery.add_phase(phase)
+        lines_magnitude.append(line_magnitude)
+        lines_phase.append(line_phase)
     #constant K calculation
-    K = GAIN*constant
-    W = asymptotic_frequency_axis
-    Kmagnitude = 20*np.log10(abs(K))*np.ones(len(W))
-    #interpolating the magnitude to the common x-axis
-    # f = interp1d(W, Kmagnitude, kind='nearest')
-    # sum_curve += f(np.clip(asymptotic_frequency_axis, min(W), max(W)))
-    sum_curve = np.add(sum_curve, Kmagnitude)
-    Kphase=(1-np.sign(K))*90*np.ones(len(W))
-    #plotting constant K
-    plotMagnitudeAsymptotic.semilogx(W, Kmagnitude, color='green', label=f'constant K={round(K,2)}')
-    plotPhaseAsymptotic.semilogx(W, Kphase, color='green', label=f'constant K={round(K,2)}')
-    #plotting the sum of all contributions
-    plotMagnitudeAsymptotic.semilogx(asymptotic_frequency_axis, sum_curve, color='black', label='sum')
+    K, Kmagnitude, Kphase = summery.calculate_constant()
+    (line_magnitude, ) = plotMagnitudeAsymptotic.semilogx(asymptotic_frequency_axis, Kmagnitude, color='green', label=f'constant K={round(K,2)}')
+    lines_magnitude.append(line_magnitude)
+    (line_phase, ) = plotPhaseAsymptotic.semilogx(asymptotic_frequency_axis, Kphase, color='green', label=f'constant K={round(K,2)}')
+    lines_phase.append(line_phase)
+    # summing all contributions
+    magnitude, phase = summery.sum()
+    (line_magnitude, ) = plotMagnitudeAsymptotic.semilogx(asymptotic_frequency_axis, magnitude, color='black', label='sum')
+    lines_magnitude.append(line_magnitude)
+    (line_phase, ) = plotPhaseAsymptotic.semilogx(asymptotic_frequency_axis, phase, color='black', label='sum')
+    lines_phase.append(line_phase)
+    map_legend_to_ax = {}  # Will map legend lines to original lines.
+
     #adding legend
-    plotMagnitudeAsymptotic.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
-    plotPhaseAsymptotic.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
+    legend_magnitude = plotMagnitudeAsymptotic.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0., fancybox=True, shadow=True)
+    legend_phase = plotPhaseAsymptotic.legend(bbox_to_anchor=(1.05, 1), loc='upper left', borderaxespad=0.)
     plotMagnitudeAsymptotic.set_title('Asymptotic Bode Plot - Magnitude plot')
     plotPhaseAsymptotic.set_title('Asymptotic Bode Plot - Phase plot')
+
+    for legend_line, ax_line in zip(legend_magnitude.get_lines(), lines_magnitude):
+        legend_line.set_picker(pick_radius_for_legend)  # Enable picking on the legend line.
+        map_legend_to_ax[legend_line] = ax_line
+    for legend_line, ax_line in zip(legend_phase.get_lines(), lines_phase):
+        legend_line.set_picker(pick_radius_for_legend) # Enable picking on the legend line.
+        map_legend_to_ax[legend_line] = ax_line
+
+    def on_pick(event):
+        # On the pick event, find the original line corresponding to the legend
+        # proxy line, and toggle its visibility.
+        legend_line = event.artist
+
+        # Do nothing if the source of the event is not a legend line.
+        if legend_line not in map_legend_to_ax:
+            return
+
+        ax_line = map_legend_to_ax[legend_line]
+        visible = not ax_line.get_visible()
+        ax_line.set_visible(visible)
+        # Change the alpha on the line in the legend, so we can see what lines
+        # have been toggled.
+        legend_line.set_alpha(1.0 if visible else 0.2)
+        fig.canvas.draw()
+    fig.canvas.mpl_connect('pick_event', on_pick)
+
 
 # Pole-Zero map subplot configuration
 def pole_zero_map(ax):
@@ -487,8 +495,7 @@ def phase_plot(ax, w, phase):
     ax.set_title('Bode Plot - Phase plot')
     ax.grid(True)
 
-# Main function
-
+# Function to change the gain in the GUI
 def changeGain(text):
     global GAIN
     GAIN = float(text)
