@@ -5,7 +5,6 @@
 
 #TODO: make AsymptoticOriginPole
 #TODO: make AsymptoticOriginZero
-#TODO: make make sum curve for asymptotic phase
 
 # Importing the required libraries
 import numpy as np
