@@ -1,1 +1,1 @@
-w
+frequency_axis[i]
